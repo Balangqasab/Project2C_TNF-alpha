@@ -1,0 +1,218 @@
+---
+title: "Project 2C"
+author: "Balang Qasab"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  html_notebook:
+    toc: yes
+    highlight: tango
+---
+
+## Introduction
+
+### Scientific Question:
+
+Can a model organism for melanoma drug treatment be identified via high sequence similarity to TNFα protein in humans?
+
+### Hypothesis:
+
+If an organism's TNFα protein sequence is <70% similarity to Human TNFα protein sequence, especially near the ligand binding site, then that organism can be potentially used a model organism for drug treatment testing.
+
+
+### Project Description
+
+In this project, I performed pairwise sequence alignment and multiple sequence alignment to identify similarities in the 10 selected sequences of TNF-alpha protein downloaded from Uniprot. The results were visualized using MSA output in the notebook, heatmap of pairwise alignment score and sequence logo visualization for MSA. 
+
+Further I tried to identify residues in binding sites of TNF-alpha protein. The protein was downloaded from rcsb.org and PDB ID is 5VH4. I used bio3d package to find residue number in the binding site of protein and displayed them in my notebook. Further I also used NGLViewer to visualize the protein structure in the notebook.  
+
+## Package Descriptions
+
+```{r loading pacages, message=FALSE, warning=FALSE}
+# Install CRAN packages using install.packages() and Bioconductor package using BiocManager::install()
+
+# To read the FASTA sequence data and perform pairwise alignment
+library(Biostrings) 
+
+# To perform multiple sequence alignment 
+library(msa) 
+
+# To identify residues in protein binding site
+library(bio3d)
+library(gplots)
+
+# To convert tex format to pdf after MSA results
+library(tools)
+
+# To visualize protein structure
+library(NGLVieweR)
+
+```
+
+## Performing Bioinformatics Analyses
+
+### Reading the FASTA file and defining GLOBAL variable and functions
+
+```{r}
+# TNFA_uniprot is an AAStringSet variable or an S4 variable that is a global variable
+TNFA_uniprot <- readAAStringSet("TNFA_aa_seq.fasta")
+
+# to check datatype
+typeof(TNFA_uniprot)
+
+# to check length of s4 object that will tell how many FASTA sequences it contains.
+length(TNFA_uniprot)
+
+names(TNFA_uniprot)
+
+# Defining a function used later for pairwise alignment
+matrix4heatmap <- function(S4sequences) {
+
+  # Store length/no. of sequences in x
+  x <- length(S4sequences)
+  # Create a grid of possible combinations
+  seq_index = expand.grid(1:x, 1:x)
+
+
+  # Use apply function to iterate pairwise alignment score calculation on possible combinations of sequences
+  forheatmap  <- apply(seq_index,1, function(x){
+    
+    seq1 <- S4sequences[x[1]]
+    seq2 <- S4sequences[x[2]]
+    # Turn the seq1 variable into a character string
+    
+    dsl = AAStringSetList(seq1)
+    as.character(unlist(dsl))
+    cl = as(dsl, "CharacterList")
+    as.list(cl)
+    
+    # Turn the seq2 variable into a character string
+    dsl2 = AAStringSetList(seq2)
+    as.character(unlist(dsl2))
+    cl2 = as(dsl2, "CharacterList")
+    as.list(cl2)
+    
+    # Store the score in variable s
+    s <- score(pairwiseAlignment(pattern = c(cl2), subject = cl))
+    
+    # return s
+    return(s)
+  })
+  
+  forheatmap <- matrix(forheatmap, nrow=x, ncol=x)
+
+  # Return the generated score matrix 
+  return(forheatmap)
+}
+
+
+
+```
+
+
+### Perform Pairwise Sequence Alignment and generate a heatmap
+
+```{r}
+# pairwise_score_mat stores the scoring matrix from matrix4heatmap function. 
+pairwise_score_mat <- matrix4heatmap(TNFA_uniprot)
+
+# Assign row and column names to matrix to display in heatmap  
+colnames(pairwise_score_mat) <- substr(names(TNFA_uniprot), 11,20) # Use a substr to show only specific string length
+rownames(pairwise_score_mat) <- substr(names(TNFA_uniprot), 11,20)
+
+# Generate and display heatmap with custom margins and tracecol as NA. 
+heatmap.2(pairwise_score_mat,margin=c(10, 10), tracecol=NA)
+
+```
+
+### Identification of residue in binding sites using bio3d
+
+```{r message=FALSE, warning=FALSE}
+
+# 5VH4 : Crystal structure of Fab fragment of anti-TNFa antibody infliximab in an I-centered orthorhombic crystal form
+
+# Read in the pdb
+pdb_5VH4 <- read.pdb('5VH4')
+
+## Automatically identify what is the protein and what is the ligand
+bs <- binding.site(pdb_5VH4)
+
+# Print the residues & save the resnumbers to a vector for later use
+bs_resnumbers <- bs$resno
+
+bs$resnames
+
+
+```
+
+## Visualization and exploration of protein structure
+
+```{r}
+# Use NGLViewer to fetch and display protein structure.
+# Custom visual parameters are applied to make visualization better.
+
+NGLVieweR("5VH4") %>%
+  stageParameters(backgroundColor = "black") %>%
+  setQuality("high") %>%
+  addRepresentation("cartoon", param = list(name = "cartoon",
+                                            colorScheme = "residueindex",
+                                            showBackground = TRUE,
+                                            labelType = "res",
+                                            backgroundColor = "white",
+                                            backgroundOpacity = 0.8))
+
+```
+
+
+### Perform Multiple Sequence Alignment
+
+```{r message=FALSE, warning=FALSE}
+
+TNFA_MSA <- msa(TNFA_uniprot)
+
+print(TNFA_MSA, show="complete")
+
+```
+
+
+### Convert results of MSA to Latex and PDF output for visualization
+
+```{r fig.height=9, fig.width=12, message=FALSE, warning=FALSE}
+
+# Code check below for what the first value is in the bs_resnumbers vector and how long that vector is.
+bs_resnumbers[1]
+
+length(bs_resnumbers)
+
+# msaPrettyPrint is a function in the msa package. First you pass it the multiple sequence alignment output from
+# above, TNFA_MSA Then you specify the output type, and tex stands for latex. There are many other types you 
+# could do but this is the one we are working with here so that we can create a PDF ultimately.
+# Y specifies the residue sequence range to look at with the image. 
+## create PDF file according to some custom settings
+
+tex_file <- paste(getwd(),"/msa_output.tex",sep="")
+
+msaPrettyPrint(TNFA_MSA,  file = tex_file, output="tex", y=c((bs_resnumbers[1]+35), (bs_resnumbers[length(bs_resnumbers)]+35)), showNames="left", showLogo="none",
+logoColors="rasmol", shadingMode="functional", shadingModeArg="structure",
+verbose = TRUE, showLegend=FALSE, askForOverwrite = FALSE)
+
+texi2pdf(tex_file, clean=TRUE)
+
+
+```
+
+### Display MSA results from PDF output.
+
+![MSA results](./msa_output.pdf){width=100%}{
+
+
+
+## Analysis of Results
+
+
+* From the pairwise alignment results we can observe a high alignment score of human TNF-alpha protein with that of DOG, HORSE and PIG.
+
+* From visualization of the protein with PDB: 5VH4 and name: ID Crystal structure of Fab fragment of anti-TNFa antibody infliximab in an I-centered orthorhombic crystal form; we can observe it has 2 amino chains.
+
+* The results of MSA output showed TNF-alpha protein sequence of SHEEP, CAPHI and, BOVIN have highest alignment score.
